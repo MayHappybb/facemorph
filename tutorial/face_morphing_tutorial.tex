@@ -1,0 +1,115 @@
+\documentclass[11pt,a4paper]{report}
+
+% ==================== Page Geometry ====================
+\usepackage[margin=1in]{geometry}
+
+% ==================== Fonts & Encoding ====================
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{lmodern}
+
+% ==================== Math ====================
+\usepackage{amsmath,amssymb,amsthm}
+\numberwithin{equation}{section}
+
+% ==================== Theorems ====================
+\theoremstyle{definition}
+\newtheorem{definition}{Definition}[section]
+\newtheorem{theorem}{Theorem}[section]
+\newtheorem{proposition}{Proposition}[section]
+\newtheorem{example}{Example}[section]
+\theoremstyle{remark}
+\newtheorem{remark}{Remark}[section]
+
+% ==================== Figures & Tables ====================
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{tabularx}
+
+% ==================== Ti\textit{k}Z ====================
+\usepackage{tikz}
+\usetikzlibrary{calc,positioning,shapes.geometric,arrows.meta,decorations.pathreplacing}
+
+% ==================== Algorithm Pseudocode ====================
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+
+% ==================== Code Listings ====================
+\usepackage{minted}
+\setminted{
+    fontsize=\small,
+    linenos,
+    numbersep=5pt,
+    frame=lines,
+    framesep=2mm,
+    breaklines,
+    breakanywhere,
+    tabsize=4
+}
+
+% ==================== Hyperlinks ====================
+\usepackage{hyperref}
+\hypersetup{
+    colorlinks=true,
+    linkcolor=blue!60!black,
+    citecolor=blue!60!black,
+    urlcolor=blue!60!black
+}
+
+% ==================== Utilities ====================
+\usepackage{xcolor}
+\usepackage{setspace}
+\usepackage{titlesec}
+\usepackage{fancyvrb}
+
+% Section title spacing
+\titlespacing*{\chapter}{0pt}{0pt}{20pt}
+\titlespacing*{\section}{0pt}{12pt plus 4pt minus 2pt}{6pt plus 2pt minus 1pt}
+\titlespacing*{\subsection}{0pt}{10pt plus 3pt minus 2pt}{4pt plus 2pt minus 1pt}
+
+% Line spacing
+\onehalfspacing
+
+% ==================== Document Info ====================
+\title{\vspace{-2em}\Huge\bfseries Feature-Based Face Morphing: A Step-by-Step Tutorial}
+\author{\Large Hongbo Meng}
+\date{\large \today}
+
+% ==================== Begin Document ====================
+\begin{document}
+
+\maketitle
+
+\thispagestyle{empty}
+\newpage
+
+\begin{abstract}
+This tutorial provides a comprehensive, step-by-step explanation of the feature-based face morphing
+algorithm --- a technique that produces natural-looking averaged faces by aligning facial features
+before blending. We cover every component in depth: facial landmark detection, affine transformations,
+barycentric coordinates, Delaunay triangulation, piecewise affine warping, and alpha blending.
+Each section includes mathematical derivations, visual illustrations using Ti\textit{k}Z diagrams,
+and a complete Python implementation supporting both \texttt{dlib} and \texttt{MediaPipe} backends.
+By the end of this tutorial, you will understand not only \emph{how} face morphing works, but
+\emph{why} each design choice matters.
+\end{abstract}
+
+\newpage
+\tableofcontents
+\newpage
+
+% ==================== Sections ====================
+
+\input{01_introduction.tex}
+\input{02_landmarks.tex}
+\input{03_geometry.tex}
+\input{04_delaunay.tex}
+\input{05_warping.tex}
+\input{06_blending.tex}
+\input{07_pipeline.tex}
+
+% ==================== Bibliography placeholder ====================
+% \bibliographystyle{plain}
+% \bibliography{references}
+
+\end{document}

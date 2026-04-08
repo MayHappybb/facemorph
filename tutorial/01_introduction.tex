@@ -1,0 +1,574 @@
+\section{Introduction}
+
+When two people stand side by side and we ask what they would look like as a single person, our
+imagination instinctively tries to merge their features. We picture the eye shape of one person
+combined with the jawline of the other, the nose of this person blended with the smile of that
+person. This intuitive notion of ``averaging'' faces is precisely what computational face
+averaging attempts to formalize. Yet what feels natural to the human brain becomes a surprisingly
+rich algorithmic challenge when we ask a computer to perform this task.
+
+This tutorial walks through every step of building a \emph{feature-based} face morphing system ---
+one that produces convincing, natural-looking results by aligning facial geometry before blending
+pixel values. Along the way, we will encounter concepts from computer vision, computational
+geometry, linear algebra, and image processing. No single technique is particularly difficult, but
+the way they fit together is elegant and instructive.
+
+
+\subsection{What Is Face Averaging and Face Morphing?}
+
+At its core, \emph{face averaging} answers a simple question: given two or more photographs of
+different people's faces, can we produce a single image that represents their collective
+appearance? The output should look like a plausible human face --- not a superimposed jumble, not
+a half-and-half split, but a coherent image that could have been captured by a camera.
+
+It helps to distinguish two closely related terms that are often used interchangeably but carry
+subtly different meanings.
+
+\begin{description}
+    \item[Face Averaging] refers to the static problem of computing a single representative face
+    from a set of input faces. The word ``average'' here is used in the everyday sense: we want
+    something that embodies characteristics of all inputs. A common technique is to compute the
+    mean of corresponding pixel values across aligned images, but as we will see shortly, a raw
+    pixel average produces unsatisfactory results without careful geometric alignment first.
+
+    \item[Face Morphing] refers to the dynamic, time-varying process of creating a smooth
+    \emph{transition} from one face to another. A morph is a sequence of frames in which the
+    first frame is face A, the last frame is face B, and every intermediate frame shows a
+    progressively larger contribution from B and a smaller contribution from A. Face morphing
+    is more general than face averaging because it requires producing not just one blended image
+    but an entire continuous family of them, parameterized by a blending coefficient $\alpha \in
+    [0, 1]$. When $\alpha = 0.5$, the morph frame is exactly an average of the two faces.
+\end{description}
+
+In this tutorial we focus primarily on the averaging problem ($\alpha = 0.5$ for two faces), but
+everything we develop generalizes directly to morphing at arbitrary values of $\alpha$. Once we
+know how to warp two faces into a common geometry and blend them at fifty percent, producing a
+full morph sequence requires only a loop over different $\alpha$ values.
+
+Formally, we can state the problem as follows.
+
+\begin{definition}[Face Averaging]
+Given $N$ input face images $I_1, I_2, \dots, I_N$, each containing a roughly frontal view of a
+person's face, compute a single output image $I_{\text{avg}}$ that appears to be a plausible face
+whose features are intermediate to those of all inputs. The output should satisfy two desirable
+properties:
+\begin{enumerate}
+    \item \textbf{Geometric fidelity:} Facial features (eyes, nose, mouth, jawline) in
+    $I_{\text{avg}}$ should have shapes and positions that are intermediate between the
+    corresponding features in each $I_k$.
+    \item \textbf{Photorealism:} $I_{\text{avg}}$ should look like a real photograph of a face,
+    not an obvious composite or computer-generated image. There should be no visible seams,
+    ghosting, or blurring artifacts caused by misalignment.
+\end{enumerate}
+\end{definition}
+
+The distinction between these two properties is important. Geometric fidelity concerns
+\emph{where} features are placed, while photorealism concerns \emph{how} they look once placed.
+The difficulty of face averaging arises because these two concerns interact: even with
+perfectly accurate pixel values, placing them at the wrong locations produces visible artifacts.
+Conversely, even with perfect geometry, poor blending of color and texture yields unrealistic
+results. Our algorithm must address both.
+
+
+\subsection{Applications of Face Averaging and Morphing}
+
+Face averaging and morphing are not merely academic curiosities. They appear in a wide variety of
+real-world contexts, some beneficial and some concerning. Understanding the applications motivates
+why we should care about producing high-quality results.
+
+
+\subsubsection{Law Enforcement and Forensics}
+
+One of the oldest and most socially valuable applications is in forensic imagery.
+Investigating officers sometimes need to reconstruct what a missing person might look like after
+years of absence, or to create a composite image from multiple partial descriptions.
+
+\begin{itemize}
+    \item \textbf{Age progression.} When a child has been missing for years, law enforcement
+    agencies produce age-progressed images to show what the person might look like as an adult.
+    While this typically involves more than simple averaging --- bone structure changes, skin
+    texture evolves, hair recedes --- morphing techniques form a building block of the process.
+    A sequence of morphed images at increasing $\alpha$ values can suggest how facial structure
+    changes over time when combined with models of aging.
+
+    \item \textbf{Composite sketches.} When multiple witnesses describe a suspect, their
+    descriptions may differ. Averaging the facial features described by independent witnesses
+    can produce a composite that captures the common elements while smoothing out inconsistencies
+    in any single account.
+
+    \item \textbf{Identifying unknown individuals.} In cases where only degraded or partial
+    facial images are available, morphing can be used to enhance recognition by combining
+    information from multiple sources.
+\end{itemize}
+
+
+\subsubsection{Entertainment and Visual Effects}
+
+The entertainment industry has long been a driving force behind morphing technology. Some of the
+most memorable visual effects in cinema history rely on face morphing.
+
+\begin{itemize}
+    \item \textbf{Film and television effects.} The 1992 music video for Michael Jackson's
+    ``Black or White'' featured a famous morphing sequence where one person's face smoothly
+    transforms into another's. Such effects, once requiring expensive proprietary hardware, can
+    now be produced on a laptop using the algorithms described in this tutorial.
+
+    \item \textbf{Celebrity morphs and deepfake precursors.} Interactive websites and applications
+    that let users morph their own face with a celebrity's are perennially popular. While modern
+    deepfake technology has largely moved to neural-network-based approaches, the traditional
+    feature-based morphing techniques we study here remain the foundation on which much of this
+    work is built.
+
+    \item \textbf{Character design.} In animation and video game development, artists sometimes
+    average multiple source faces to create a new character whose appearance feels familiar yet
+    distinctive. Averages of many faces tend to produce unusually attractive results --- a
+    phenomenon we will discuss below --- making this a useful tool for character design.
+\end{itemize}
+
+
+\subsubsection{Cognitive Science and Psychology}
+
+Perhaps the most scientifically surprising application of face averaging comes from the study of
+human face perception. In 1878, Francis Galton --- a pioneer of statistics --- had an idea that
+turned out to be remarkably prescient. He proposed that by superimposing multiple photographic
+portraits, one could produce a ``composite photograph'' that represents the typical appearance of
+a group.
+
+Galton's original method was crude: he simply exposed a single photographic plate multiple times,
+once for each person's portrait, with each exposure reduced in intensity. The resulting composite
+turned out to be more attractive than essentially any of the individual faces that went into it.
+This observation led to decades of research.
+
+Modern confirmations of Galton's finding include:
+
+\begin{itemize}
+    \item \textbf{The ``averageness'' hypothesis.} Studies have repeatedly shown that composite
+    faces --- whether created by photographic averaging or by computer morphing --- are rated as
+    more attractive than individual faces. One explanation is that averageness signals genetic
+    diversity and health. Another is that average faces are easier for the visual system to
+    process (a ``processing fluency'' account).
+
+    \item \textbf{Prototype formation.} Human brains appear to form prototype representations of
+    faces automatically. When we see many faces of a particular demographic group, our visual
+    system constructs an implicit ``average'' of those faces, which then becomes the baseline
+    against which individual faces are compared. Morphing experiments allow researchers to probe
+    this process by presenting controlled intermediate faces and measuring human responses.
+
+    \item \textbf{Own-race bias.} People tend to be better at recognizing faces of their own racial
+    or ethnic group than faces of other groups. Morphing studies have helped clarify whether this
+    bias arises from perceptual familiarity (the prototype for other-race faces is less well
+    developed) or from social factors.
+\end{itemize}
+
+
+\subsubsection{Biometric Security and Morphing Attacks}
+
+On the more concerning side of applications, face morphing plays an important role in understanding
+and attacking biometric security systems.
+
+A \emph{morphing attack} on a face recognition system works as follows. An attacker creates a
+morphed image that combines their own face with the face of an authorized person (the ``target'').
+Because the morph contains features of both individuals, it may be accepted by the enrollment
+system as belonging to the authorized person. Once the morphed image is enrolled in the database,
+the attacker can then authenticate using their \emph{own} face, because the system has learned to
+associate features of the attacker's face with the target's identity.
+
+This attack vector is particularly dangerous in border control applications. If a forged passport
+contains a morphed photograph of two different people, both people could potentially use that
+single passport. The European Union's border control system has identified this as a significant
+vulnerability, and research into morph detection has become a distinct subfield.
+
+Understanding morphing attacks requires understanding morphing algorithms at a deep level. This is
+why we study the full pipeline in this tutorial: the same techniques that produce beautiful
+entertainment morphs also produce the morphs that can fool biometric systems, and knowing
+how they work is essential for building defenses.
+
+
+\subsection{The Naive Approach: Why Simple Pixel Averaging Fails}
+
+Before developing a sophisticated algorithm, it is instructive to understand why the obvious
+approach does not work. Consider the following naive strategy:
+
+\begin{enumerate}
+    \item Take two face images $I_1$ and $I_2$.
+    \item Align them by identifying the centers of the eyes in each image and applying a global
+    similarity transform (rotation, translation, and uniform scaling) so that the eye centers match.
+    \item For every pixel position $(x, y)$, compute the output pixel as the arithmetic mean:
+    \[
+        I_{\text{avg}}(x, y) = \frac{I_1(x, y) + I_2(x, y)}{2}.
+    \]
+\end{enumerate}
+
+This approach is simple, requires no advanced mathematics, and can be implemented in a few lines
+of code. So what goes wrong?
+
+\subsubsection{The Ghosting Effect}
+
+The fundamental problem is that two different faces, even when aligned by eye centers, do not agree
+on the precise position of other facial features. Consider the nose. Person A may have a nose that
+sits slightly lower on the face, or is wider, or has a different tip shape than Person B's nose.
+After global eye-based alignment, the two noses will not occupy exactly the same set of pixels.
+
+When we average pixel-by-pixel, the pixels belonging to A's nose and the pixels belonging to B's
+nose are at slightly different locations. The result is that neither nose appears sharply in the
+output --- instead, we see a blurry, ghost-like artifact where both noses are partially visible but
+neither is crisp. The same issue occurs for every facial feature:
+
+\begin{itemize}
+    \item \textbf{Eyes} may have slightly different shapes and sizes; even when eye centers align,
+    the corners of the eyes and the eyelids do not.
+    \item \textbf{The nose} is often the worst offender, as nose position and shape vary
+    considerably between individuals and the nose's shadow can appear in different places.
+    \item \textbf{The mouth} varies in width, the corners may be at different vertical positions,
+    and lip thickness differs significantly.
+    \item \textbf{The jawline and face shape} often differ enough that the outline of the averaged
+    face appears double-exposed.
+    \item \textbf{Eyebrows} differ in thickness, arch position, and vertical placement.
+    \item \textbf{Ears} may be visible in one image but not the other, or may appear at different
+    positions relative to the face outline.
+\end{itemize}
+
+The cumulative effect is a blurred, ghostly image that looks like a double exposure of two faces
+rather than a single coherent person. The blurring is not uniform: it is worst at the boundaries of
+facial features, where the position disagreement is largest. This creates a particularly
+unnatural appearance because the eyes and mouth --- which carry the most perceptually salient
+information about a face --- are the regions where the artifacts are most visible.
+
+\subsubsection{A Conceptual Example}
+
+To make this concrete, imagine a one-dimensional version of the problem. Suppose we represent the
+intensity profile along a horizontal line through an eye as a simple function. Person A's eye
+extends from pixel 40 to pixel 60, while Person B's eye extends from pixel 43 to pixel 63 (it is
+slightly shifted to the right). If we average these profiles pixel by pixel:
+
+\begin{itemize}
+    \item At pixels 40--42, only Person A contributes eye pixels; Person B contributes background
+    (skin) pixels. The average is a weak, partial eye signal.
+    \item At pixels 43--60, both contribute eye pixels, but at different sub-regions within the
+    eye. The average is muddled.
+    \item At pixels 61--63, the situation is reversed: Person B contributes eye pixels while Person
+    A contributes background.
+\end{itemize}
+
+The result is a smeared eye that is wider than either original but lacks the crisp edges of either.
+This is exactly what we observe in the two-dimensional case, only the misalignment occurs in both
+horizontal and vertical directions with varying amounts at different locations on the face.
+
+\subsubsection{Why Global Alignment Cannot Fix This}
+
+The key insight is that the misalignment is \emph{local}, not global. A global similarity
+transform (rotation, translation, uniform scale) can bring the eyes into alignment, but it cannot
+simultaneously bring the nose, mouth, jawline, and all other features into alignment. These
+features move independently of one another because they are governed by the underlying bone
+structure, muscle, and soft tissue, which differ between individuals.
+
+What we need is a \emph{local} deformation that can independently adjust different regions of
+the face. This is the essence of the feature-based approach: instead of asking for a single
+transformation of the entire image, we divide the face into regions and compute a separate
+transformation for each region, ensuring that corresponding features are brought into precise
+alignment before any pixel averaging occurs.
+
+
+\subsection{The Feature-Based Solution: A High-Level View}
+
+The feature-based approach to face averaging solves the ghosting problem by inverting the order of
+operations. Rather than averaging pixel values first and hoping the geometry works out, we ensure
+the geometry is correct first, then average.
+
+The idea proceeds in three conceptual steps.
+
+\paragraph{Step 1: Establish correspondences.}
+We identify a set of \emph{corresponding points} in each input face. These are landmark points
+that have the same semantic meaning in every face: the tip of the nose, the corner of the left
+eye, the center of the lower lip, and so on. If we identify 68 such points in each face, then
+point $i$ in Face A corresponds to point $i$ in Face B for all $i = 1, \dots, 68$.
+
+\paragraph{Step 2: Define a target geometry.}
+Given the landmarks in each face, we compute a \emph{mean shape} by averaging the landmark
+positions. For 68 points, this gives us 68 mean coordinates. The mean shape represents the
+``average'' placement of features and will serve as the geometric canvas onto which we project
+each face.
+
+\paragraph{Step 3: Warp and blend.}
+We deform (warp) each input face so that its landmarks land exactly on the mean shape's
+landmarks. After warping, corresponding features in all faces occupy the same pixel locations.
+Only then do we average the pixel values. Because the geometry is aligned, the averaging produces
+a sharp, natural-looking result rather than a ghostly blur.
+
+This approach is called \emph{feature-based} because the deformation is driven by the positions
+of specific facial features (the landmarks), and the intermediate geometry (the triangulation and
+warping) is constructed to respect those feature locations.
+
+\subsubsection{Piecewise Affine Warping}
+
+The warping step requires care. We cannot simply warp the entire face with a single transformation
+because different parts of the face need to move by different amounts. The nose might need to
+shift downward while the mouth shifts upward. Instead, we divide the face into a mesh of triangles
+using the landmark points as vertices. Each triangle undergoes its own affine transformation.
+
+An \emph{affine transformation} preserves straight lines and parallelism. It can translate,
+rotate, scale, and shear, but it cannot bend or curve. By restricting ourselves to affine
+transforms within each triangle, we ensure that the local structure of the image within the
+triangle is preserved while the triangle as a whole moves to its target position.
+
+This approach is called \emph{piecewise affine warping} because the overall transformation is
+a patchwork of affine transforms, one per triangle, joined together at the triangle boundaries.
+The result is a continuous deformation of the image that precisely maps each landmark to its
+target position.
+
+The use of triangles is not arbitrary. Triangles have several desirable properties:
+
+\begin{itemize}
+    \item Three points uniquely define a triangle, and three point correspondences uniquely define
+    an affine transformation. This makes the mathematics straightforward.
+    \item Triangles tile any planar point set (a property not shared by, say, quadrilaterals).
+    Using the Delaunay triangulation of the landmark points, we can decompose the entire face
+    region into non-overlapping triangles with good geometric properties.
+    \item The Delaunay triangulation maximizes the minimum angle of all triangles, avoiding
+    long, skinny triangles that would produce poor interpolation results.
+\end{itemize}
+
+
+\subsection{Algorithm Pipeline}
+
+The complete face averaging pipeline, from raw input images to a blended average face, consists of
+the following five major steps. Each step is the subject of a subsequent section in this tutorial,
+but we present the full pipeline here so you can see the big picture before diving into details.
+
+\begin{enumerate}
+    \item \textbf{Detect facial landmarks.} Given an input face image, we run a landmark detector
+    to find the coordinates of key facial features. A typical detector returns 68 points: the jaw
+    line (17 points), the left and right eyebrows (5 points each), the nose bridge and nose tip (9
+    points), the left and right eyes (6 points each), and the mouth outline (20 points). Popular
+    detectors include dlib's shape predictor and MediaPipe's FaceMesh. The choice of detector
+    affects the number and precision of landmarks but not the overall algorithm structure.
+
+    \item \textbf{Compute mean landmark positions.} With landmarks identified in each input face,
+    we compute the component-wise arithmetic mean of corresponding landmark positions. If Face A
+    has landmark $i$ at position $\mathbf{p}^{(A)}_i = (x^{(A)}_i, y^{(A)}_i)$ and Face B
+    has landmark $i$ at $\mathbf{p}^{(B)}_i = (x^{(B)}_i, y^{(B)}_i)$, then the mean position is:
+    \[
+        \mathbf{p}^{(\text{mean})}_i = \frac{\mathbf{p}^{(A)}_i + \mathbf{p}^{(B)}_i}{2}.
+    \]
+    For $N$ faces, the mean is simply the sum over all $N$ divided by $N$. The resulting set of
+    mean landmark positions defines the mean shape.
+
+    \item \textbf{Triangulate the mean shape.} Using the mean landmark positions as vertices, we
+    compute a Delaunay triangulation. This partitions the convex hull of the landmarks into a set
+    of triangles such that no landmark point lies inside the circumcircle of any triangle. The
+    Delaunay triangulation is uniquely determined by the point set and has the important property
+    of maximizing the minimum triangle angle, which avoids degenerate (long, thin) triangles that
+    would cause numerical instability during the warping step.
+
+    \item \textbf{Warp each face to the mean shape.} For each input face and each triangle in the
+    Delaunay triangulation of the mean shape, we perform the following sub-steps:
+    \begin{enumerate}
+        \item[a.] Find the corresponding triangle in the input face (using the same landmark
+        indices).
+        \item[b.] Compute the affine transformation that maps the input face's triangle to the
+        mean shape's triangle.
+        \item[c.] Apply this transformation (in reverse, via inverse warping) to copy pixel values
+        from the input face into the target triangle in the mean shape.
+    \end{enumerate}
+    This process is repeated for every triangle, yielding a complete warped image of each face in
+    the mean shape geometry. The warping uses inverse mapping and interpolation to avoid gaps and
+    ensure every output pixel gets a value.
+
+    \item \textbf{Blend the warped faces.} Once all faces are warped to the common mean geometry,
+    their pixel values can be directly averaged. For a two-face morph at blending coefficient
+    $\alpha$, the output image is:
+    \[
+        I_{\text{out}} = (1 - \alpha) \cdot I^{(A)}_{\text{warped}} + \alpha \cdot
+        I^{(B)}_{\text{warped}}.
+    \]
+    For face averaging with equal weights, $\alpha = 0.5$. For a full morph sequence, we compute
+    this expression for multiple values of $\alpha$ from 0 to 1, producing a smooth transitions
+    from Face A to Face B.
+\end{enumerate}
+
+The following figure illustrates the complete pipeline as a flow diagram.
+
+\begin{figure}[htbp]
+    \centering
+    \begin{tikzpicture}[
+        >=Stealth,
+        node distance=1.6cm,
+        box/.style={
+            rectangle,
+            rounded corners=3pt,
+            draw=blue!60!black,
+            fill=blue!5,
+            minimum width=4.2cm,
+            minimum height=1.2cm,
+            align=center,
+            font=\small
+        },
+        inputbox/.style={
+            rectangle,
+            rounded corners=3pt,
+            draw=orange!80!black,
+            fill=orange!10,
+            minimum width=3.5cm,
+            minimum height=1.0cm,
+            align=center,
+            font=\small
+        },
+        outputbox/.style={
+            rectangle,
+            rounded corners=3pt,
+            draw=green!60!black,
+            fill=green!5,
+            minimum width=3.5cm,
+            minimum height=1.0cm,
+            align=center,
+            font=\small
+        },
+        stepnum/.style={
+            circle,
+            draw=blue!60!black,
+            fill=blue!60!black,
+            text=white,
+            minimum size=0.6cm,
+            font=\footnotesize\bfseries,
+            inner sep=0pt
+        },
+        arrow/.style={
+            ->,
+            thick,
+            blue!60!black
+        }
+    ]
+    % Title
+    \node[font=\large\bfseries, text=blue!60!black] (title)
+        {Face Averaging Pipeline};
+
+    % Input faces (parallel branches)
+    \node[inputbox, below=1.5cm of title, xshift=-2.5cm] (faceA)
+        {\textbf{Face Image A}\\$I_A$};
+    \node[inputbox, below=1.5cm of title, xshift=2.5cm] (faceB)
+        {\textbf{Face Image B}\\$I_B$};
+
+    % Step 1: Landmark Detection
+    \node[box, below=1.8cm of title, xshift=-2.5cm] (step1a)
+        {Detect 68 Landmarks};
+    \node[box, below=1.8cm of title, xshift=2.5cm] (step1b)
+        {Detect 68 Landmarks};
+    \node[stepnum, at={($(faceA)!0.5!(step1a)$)}] (s1label) {1};
+
+    % Landmark outputs
+    \node[box, below=of step1a, font=\footnotesize] (landA)
+        {Landmarks $\{\mathbf{p}^{(A)}_i\}$};
+    \node[box, below=of step1b, font=\footnotesize] (landB)
+        {Landmarks $\{\mathbf{p}^{(B)}_i\}$};
+
+    % Step 2: Mean Shape
+    \node[box, below=1.5cm of landA, xshift=2.5cm] (step2)
+        {Compute Mean Shape\\$\mathbf{p}^{(\text{mean})}_i = \frac{1}{N}\sum_k
+        \mathbf{p}^{(k)}_i$};
+
+    % Step 3: Triangulation
+    \node[box, below=of step2] (step3)
+        {Delaunay Triangulation\\of Mean Shape};
+
+    % Step 4: Warping (two parallel paths)
+    \node[box, below=1.5cm of step3, xshift=-2.5cm] (step4a)
+        {Warp Face A\\to Mean Shape\\(Piecewise Affine)};
+    \node[box, below=1.5cm of step3, xshift=2.5cm] (step4b)
+        {Warp Face B\\to Mean Shape\\(Piecewise Affine)};
+    \node[stepnum, left=3mm of step4a] () {4};
+
+    \node[box, below=0.8cm of step4a, font=\footnotesize] (warpA)
+        {$I_A^{\text{warped}}$};
+    \node[box, below=0.8cm of step4b, font=\footnotesize] (warpB)
+        {$I_B^{\text{warped}}$};
+
+    % Step 5: Blending
+    \node[box, below=1.0cm of warpA, xshift=2.5cm] (step5)
+        {Alpha Blending\\$I_{\text{out}} = (1-\alpha) I_A^w + \alpha I_B^w$};
+
+    % Output
+    \node[outputbox, below=of step5] (output)
+        {\textbf{Average Face}\\$I_{\text{avg}}$};
+
+    % Arrows: Face -> Landmark Detection
+    \draw[arrow] (faceA) -- (step1a);
+    \draw[arrow] (faceB) -- (step1b);
+
+    % Arrows: Landmark Detection -> Landmark outputs
+    \draw[arrow] (step1a) -- (landA);
+    \draw[arrow] (step1b) -- (landB);
+
+    % Arrows: Landmarks -> Mean Shape
+    \draw[arrow] (landA) -- (landA |- step2.north);
+    \draw[arrow] (landB) -- (landB |- step2.north);
+
+    % Arrow: Mean Shape -> Triangulation
+    \draw[arrow] (step2) -- (step3);
+
+    % Arrows: Triangulation -> Warping
+    \draw[arrow] (step3.south) -- +(0, -0.5cm) -| (step4a.north);
+    \draw[arrow] (step3.south) -- +(0, -0.5cm) -| (step4b.north);
+
+    % Arrow: Face A -> Warp A (implicit: use same triangulation)
+    \draw[arrow, dashed, orange!80!black] (faceA.west) -- ++(-1.0cm, 0) |- (step4a.west)
+        node[midway, left, font=\tiny, text=orange!80!black] {image data};
+    \draw[arrow, dashed, orange!80!black] (faceB.east) -- ++(1.0cm, 0) |- (step4b.east)
+        node[midway, right, font=\tiny, text=orange!80!black] {image data};
+
+    % Arrows: Warped -> Blending
+    \draw[arrow] (warpA) -- (warpA |- step5.north);
+    \draw[arrow] (warpB) -- (warpB |- step5.north);
+
+    % Arrow: Blending -> Output
+    \draw[arrow] (step5) -- (output);
+
+    \end{tikzpicture}
+    \caption{Complete face averaging pipeline. Two input face images (orange, top) are processed
+    in parallel through landmark detection. The extracted landmark sets are combined to compute a
+    mean shape (Step~2), which is then triangulated using Delaunay triangulation (Step~3).
+    The triangulation guides piecewise affine warping of each face into the mean geometry
+    (Step~4). Finally, the warped images are blended via alpha compositing (Step~5) to produce
+    the output average face (green, bottom). Dashed orange arrows indicate that the original
+    image pixel data flows directly into the warping stage, guided by the geometric structure
+    computed in Steps 2 and 3.}
+    \label{fig:pipeline}
+\end{figure}
+
+\subsection{Why This Approach Produces Natural Results}
+
+To close this introduction, it is worth understanding at an intuitive level why the feature-based
+approach succeeds where the naive approach fails.
+
+The core reason is \emph{structural alignment}. When a human observer looks at a face, the brain
+does not process it pixel by pixel. Instead, it identifies a structure: there are two eyes, a nose,
+a mouth, arranged in a particular configuration. The recognition and interpretation of the face
+depends on getting this structure right.
+
+The naive pixel-averaging approach operates at the level of the retina (the pixel grid), ignoring
+structure entirely. It assumes that pixel $(x, y)$ in one face corresponds to pixel $(x, y)$ in
+the other face, which is simply not true for any features beyond the alignment anchors.
+
+The feature-based approach, by contrast, operates at the level of the structure. By identifying
+corresponding landmarks and warping to a common geometry, we ensure that the left eye of Face A
+and the left eye of Face B are mapped to the same location in the output before their pixel
+values are averaged. The structure is aligned first, so the pixel averaging makes sense.
+
+The result is a face that looks like a real person because the internal structure is internally
+consistent. All features are in their proper relative positions, just as they would be in a
+photograph. The eyes are sharp because both input eye images have been warped to the same
+geometry before averaging, rather than being averaged at slightly offset positions. The same is
+true for the nose, mouth, and all other features.
+
+This structural perspective also explains why 68 landmarks (or similar) are sufficient to produce
+convincing results even though a typical face image contains millions of pixels. The landmarks
+capture the essential structural degrees of freedom of the face --- the positions of eyes, nose,
+mouth, jaw, and eyebrows --- and the piecewise affine warping fills in the continuous deformation
+between these control points. The pixel values carry the texture and color information, but the
+structure is entirely determined by the landmarks.
+
+In the following sections, we will examine each of these five pipeline steps in detail, working
+through the mathematics, the implementation, and the design choices that go into building a
+complete face morphing system.
+
+
+\endinput
