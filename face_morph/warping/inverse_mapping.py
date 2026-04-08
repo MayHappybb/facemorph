@@ -26,11 +26,13 @@ class InverseMappingWarper(WarpingEngine):
         src_landmarks: np.ndarray,
         dst_landmarks: np.ndarray,
         triangles: list[tuple[int, int, int]],
-        output_size: tuple[int, int] | None = None
+        output_size: tuple[int, int] | None = None,
+        src_face_scale: float = 1.0,
+        dst_face_scale: float = 1.0
     ) -> np.ndarray:
         """Warp image using pure Python inverse mapping.
 
-        Works with normalized coordinates.
+        Works with face-centered normalized coordinates.
         """
         src_h, src_w = image.shape[:2]
 
@@ -41,15 +43,15 @@ class InverseMappingWarper(WarpingEngine):
             out_w, out_h = output_size
 
         # Convert normalized landmarks to pixel coordinates
-        # src: normalized (height=1) -> src pixel coords
-        src_pixels = src_landmarks.copy()
-        src_pixels[:, 0] = src_landmarks[:, 0] * src_h + src_w / 2.0
-        src_pixels[:, 1] = src_landmarks[:, 1] * src_h + src_h / 2.0
+        # src: normalized (face-centered) -> src pixel coords
+        src_pixels = src_landmarks.copy() * src_face_scale
+        src_pixels[:, 0] += src_w / 2.0
+        src_pixels[:, 1] += src_h / 2.0
 
-        # dst: normalized (height=1) -> output pixel coords
-        dst_pixels = dst_landmarks.copy()
-        dst_pixels[:, 0] = dst_landmarks[:, 0] * out_h + out_w / 2.0
-        dst_pixels[:, 1] = dst_landmarks[:, 1] * out_h + out_h / 2.0
+        # dst: normalized (face-centered) -> output pixel coords
+        dst_pixels = dst_landmarks.copy() * dst_face_scale
+        dst_pixels[:, 0] += out_w / 2.0
+        dst_pixels[:, 1] += out_h / 2.0
 
         output = np.zeros((out_h, out_w, image.shape[2]), dtype=image.dtype)
         filled = np.zeros((out_h, out_w), dtype=bool)
