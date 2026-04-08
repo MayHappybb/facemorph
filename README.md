@@ -1,86 +1,90 @@
-# Face Morphing Program
+# FaceMorph
 
-A feature-based face morphing implementation following the tutorial. Supports both OpenCV-optimized and pure Python inverse mapping warpers.
+[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
+A feature-based face morphing implementation with dual warping engines and normalized coordinate system for handling images of different sizes without distortion.
+
+![Morph Example](https://user-images.githubusercontent.com/placeholder/morph.gif)
 
 ## Features
 
-- **Two landmark backends**: MediaPipe (478→68 points) and dlib (68 points)
-- **Two warping engines**:
-  - `opencv`: Fast, optimized implementation using `cv2.warpAffine` (~100-300ms/frame)
-  - `inverse`: Pure Python educational implementation showing the exact algorithm
-- **Static averaging** and **animated morph sequences**
-- **Modular architecture** with clean separation of concerns
+- **Dual Landmark Backends**: MediaPipe (468 points) and dlib (68 points)
+- **Two Warping Engines**:
+  - `opencv`: Fast optimized implementation (~100-300ms/frame)
+  - `inverse`: Pure Python educational implementation showing exact algorithm
+- **Normalized Coordinates**: Handles different image sizes without stretching
+- **Morph Sequences**: Generate smooth frame-by-frame animations
+- **Comprehensive Tutorial**: Full LaTeX documentation with mathematical derivations
 
-## Installation
+## Quick Start
 
 ```bash
-# Create virtual environment
+# Clone and setup
+git clone https://github.com/YOUR_USERNAME/facemorph.git
+cd facemorph
 python3 -m venv .venv
 source .venv/bin/activate
-
-# Install dependencies
 pip install -r requirements.txt
+
+# Single frame average
+python morph.py face1.jpg face2.jpg --output average.png
+
+# Morph sequence (30fps, 60 frames = 2 seconds)
+python morph.py face1.jpg face2.jpg --sequence --num-frames 60 --fps 30
 ```
 
-## Usage
+## Algorithm Pipeline
 
-### Single Frame (Average Face)
-
-```bash
-# Using MediaPipe (default, no model files needed)
-python morph.py face_A.jpg face_B.jpg --output average.png
-
-# Custom blend (alpha=0.7)
-python morph.py face_A.jpg face_B.jpg --alpha 0.7 --output blend.png
-
-# Using pure inverse mapping warper (slower but educational)
-python morph.py face_A.jpg face_B.jpg --warper inverse --output average.png
-
-# Using dlib (requires shape_predictor_68_face_landmarks.dat)
-python morph.py face_A.jpg face_B.jpg --backend dlib --dlib-model path/to/model.dat
-```
-
-### Morph Sequence
-
-```bash
-# Generate 30-frame morph animation
-python morph.py face_A.jpg face_B.jpg --sequence --num-frames 30 --output morph.mp4
-
-# Custom frame rate
-python morph.py face_A.jpg face_B.jpg --sequence --num-frames 60 --fps 30
-```
-
-## Command-Line Options
-
-| Option | Description | Default |
-|--------|-------------|---------|
-| `image1`, `image2` | Input face images | (required) |
-| `--alpha` | Blending weight [0-1] | 0.5 |
-| `--backend` | Landmark detector: `mediapipe` or `dlib` | mediapipe |
-| `--warper` | Warping engine: `opencv` or `inverse` | opencv |
-| `--sequence` | Generate morph sequence | False |
-| `--num-frames` | Number of frames for sequence | 30 |
-| `--output` | Output file path | output.png |
+1. **Detect Landmarks** → 68 facial feature points
+2. **Normalize** → Centered coordinates (height=1, aspect preserved)
+3. **Triangulate** → Delaunay mesh on mean shape
+4. **Warp** → Piecewise affine transformation to common geometry
+5. **Blend** → Alpha compositing
 
 ## Project Structure
 
 ```
 face_morph/
-├── landmarks/      # Landmark detection backends
-├── geometry/       # Affine transforms, barycentric coords, Delaunay
-├── warping/        # OpenCV and inverse mapping warpers
-├── blending/       # Alpha blending
+├── landmarks/      # MediaPipe & dlib backends
+├── geometry/       # Affine, barycentric, Delaunay
+├── warping/        # OpenCV & inverse mapping engines
+├── blending/       # Alpha compositing
 └── pipeline/       # Full morph pipeline
 
-morph.py            # CLI entry point
+tutorial/           # Comprehensive LaTeX tutorial
 ```
 
-## Algorithm Pipeline
+## Documentation
 
-1. **Detect landmarks** (68 points) on both faces
-2. **Compute mean shape** by averaging corresponding landmarks
-3. **Delaunay triangulation** on mean shape
-4. **Piecewise affine warp** both faces to mean shape
-5. **Alpha blend** the warped images
+See [`tutorial/face_morphing_tutorial.pdf`](tutorial/face_morphing_tutorial.pdf) for the complete mathematical derivation covering:
+- Facial landmark detection
+- Affine transformations and homogeneous coordinates
+- Barycentric coordinates and point-in-triangle tests
+- Delaunay triangulation
+- Piecewise affine warping with inverse mapping
+- Alpha blending and morph sequence generation
 
-See the `face_morphing_tutorial.tex` for detailed mathematical derivations.
+## Usage
+
+```bash
+# Average two faces (α=0.5)
+python morph.py face_a.jpg face_b.jpg --alpha 0.5
+
+# Custom blend (70% face B)
+python morph.py face_a.jpg face_b.jpg --alpha 0.7
+
+# Use pure inverse mapping (slower, educational)
+python morph.py face_a.jpg face_b.jpg --warper inverse
+
+# Full morph animation
+python morph.py face_a.jpg face_b.jpg --sequence --num-frames 60
+```
+
+## License
+
+MIT License - See [LICENSE](LICENSE) for details.
+
+## Acknowledgments
+
+Based on the classic feature-based morphing algorithm by Beier and Neely (SIGGRAPH 1992).
