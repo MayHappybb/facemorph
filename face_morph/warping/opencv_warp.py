@@ -20,6 +20,8 @@ class OpenCVWarper(WarpingEngine):
         dst_landmarks: np.ndarray,
         triangles: list[tuple[int, int, int]],
         output_size: tuple[int, int] | None = None,
+        src_face_center: np.ndarray = None,
+        dst_face_center: np.ndarray = None,
         src_face_scale: float = 1.0,
         dst_face_scale: float = 1.0
     ) -> np.ndarray:
@@ -35,17 +37,22 @@ class OpenCVWarper(WarpingEngine):
         else:
             out_w, out_h = output_size
 
+        # Default face centers if not provided
+        if src_face_center is None:
+            src_face_center = np.array([src_w / 2.0, src_h / 2.0])
+        if dst_face_center is None:
+            dst_face_center = np.array([out_w / 2.0, out_h / 2.0])
+
         # Convert normalized landmarks to pixel coordinates
         # src: normalized (face-centered) -> src pixel coords
-        # Shift to image center, then scale
         src_pixels = src_landmarks.copy() * src_face_scale
-        src_pixels[:, 0] += src_w / 2.0
-        src_pixels[:, 1] += src_h / 2.0
+        src_pixels[:, 0] += src_face_center[0]
+        src_pixels[:, 1] += src_face_center[1]
 
         # dst: normalized (face-centered) -> output pixel coords
         dst_pixels = dst_landmarks.copy() * dst_face_scale
-        dst_pixels[:, 0] += out_w / 2.0
-        dst_pixels[:, 1] += out_h / 2.0
+        dst_pixels[:, 0] += dst_face_center[0]
+        dst_pixels[:, 1] += dst_face_center[1]
 
         output = np.zeros((out_h, out_w, image.shape[2]), dtype=image.dtype)
 

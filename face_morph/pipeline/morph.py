@@ -146,17 +146,24 @@ def morph_faces(
     # Create warping engine
     warping_engine = create_warper(warper)
 
+    # Destination face center is always the center of the output canvas
+    # This ensures the face is centered in the output
+    dst_face_center = np.array([output_w / 2.0, output_h / 2.0])
+
     # Warp both faces to mean shape
-    # Pass face scales so warpers can convert back to pixel coordinates
     warped1 = warping_engine.warp(
         image1, lm1_ext, lm_mean_ext, triangles,
         output_size=(output_w, output_h),
+        src_face_center=center1,
+        dst_face_center=dst_face_center,
         src_face_scale=scale1,
         dst_face_scale=scale_mean
     )
     warped2 = warping_engine.warp(
         image2, lm2_ext, lm_mean_ext, triangles,
         output_size=(output_w, output_h),
+        src_face_center=center2,
+        dst_face_center=dst_face_center,
         src_face_scale=scale2,
         dst_face_scale=scale_mean
     )
