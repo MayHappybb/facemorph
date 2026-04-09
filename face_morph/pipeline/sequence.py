@@ -7,40 +7,45 @@ from .morph import morph_faces
 
 
 def generate_morph_sequence(
-    image1: np.ndarray,
-    image2: np.ndarray,
-    landmarks1: np.ndarray,
-    landmarks2: np.ndarray,
+    images: list[np.ndarray],
+    landmarks: list[np.ndarray],
     num_frames: int = 30,
     output_dir: str = "morph_frames",
     warper: str = 'opencv'
 ) -> list[np.ndarray]:
     """Generate morph sequence from image1 to image2.
 
+    Note: Only works for 2 images (linear interpolation).
+
     Args:
-        image1: First face image
-        image2: Second face image
-        landmarks1: (68, 2) landmarks for image1
-        landmarks2: (68, 2) landmarks for image2
+        images: List of 2 face images
+        landmarks: List of 2 landmark arrays (68, 2)
         num_frames: Number of frames to generate
         output_dir: Directory to save frames
         warper: 'opencv' or 'inverse'
 
     Returns:
         List of frames
+
+    Raises:
+        ValueError: If more than 2 images provided
     """
+    if len(images) != 2:
+        raise ValueError("Sequence generation only supported for 2 images")
+
     os.makedirs(output_dir, exist_ok=True)
     frames = []
 
     for k in range(num_frames):
         t = k / (num_frames - 1) if num_frames > 1 else 0.0
 
-        print(f"  Frame {k + 1}/{num_frames} (alpha={t:.3f})")
+        print(f"  Frame {k + 1}/{num_frames} (weights={1-t:.3f}, {t:.3f})")
+
+        # Linear interpolation: [1-t, t]
+        weights = [1 - t, t]
 
         frame = morph_faces(
-            image1, image2,
-            landmarks1, landmarks2,
-            alpha=t,
+            images, landmarks, weights,
             warper=warper
         )
 
@@ -62,21 +67,19 @@ def save_video(
         output_path: Output video path
         fps: Frames per second
     """
-    # Try ffmpeg first
     import subprocess
     import shutil
 
     if shutil.which("ffmpeg"):
         print(f"Creating video with ffmpeg: {output_path}")
-        # ffmpeg command with pad filter to ensure even dimensions
         cmd = [
             "ffmpeg",
-            "-y",  # Overwrite output
+            "-y",
             "-framerate", str(fps),
             "-i", os.path.join(frames_dir, "frame_%04d.png"),
             "-c:v", "libx264",
             "-pix_fmt", "yuv420p",
-            "-vf", "pad=ceil(iw/2)*2:ceil(ih/2)*2",  # Ensure even dimensions
+            "-vf", "pad=ceil(iw/2)*2:ceil(ih/2)*2",
             output_path
         ]
         try:

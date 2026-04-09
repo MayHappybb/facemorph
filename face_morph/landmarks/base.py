@@ -118,10 +118,12 @@ class MediaPipeDetector(LandmarkDetector):
 
     def __del__(self):
         """Cleanup - ignore errors during Python shutdown."""
-        if self.landmarker is not None:
+        if getattr(self, 'landmarker', None) is not None:
             try:
-                self.landmarker.close()
-            except (TypeError, AttributeError):
+                close_method = getattr(self.landmarker, 'close', None)
+                if callable(close_method):
+                    close_method()
+            except (TypeError, AttributeError, ImportError):
                 # Ignore errors during interpreter shutdown
                 pass
 

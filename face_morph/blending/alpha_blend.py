@@ -35,3 +35,38 @@ def alpha_blend(
         blended = blended.astype(image1.dtype)
 
     return blended
+
+
+def multi_blend(
+    images: list[np.ndarray],
+    weights: list[float]
+) -> np.ndarray:
+    """Blend N images using weighted compositing.
+
+    Args:
+        images: List of N images (all same shape)
+        weights: List of N weights, should sum to 1.0
+
+    Returns:
+        Blended image
+    """
+    assert len(images) == len(weights), "Number of images must match number of weights"
+    assert len(images) >= 2, "Need at least 2 images to blend"
+
+    # Normalize weights to sum to 1 if needed
+    total = sum(weights)
+    if abs(total - 1.0) > 1e-6:
+        weights = [w / total for w in weights]
+
+    # Weighted sum
+    result = np.zeros_like(images[0], dtype=np.float64)
+    for img, w in zip(images, weights):
+        result += w * img.astype(np.float64)
+
+    # Convert back to original dtype
+    if images[0].dtype == np.uint8:
+        result = np.clip(result, 0, 255).astype(np.uint8)
+    else:
+        result = result.astype(images[0].dtype)
+
+    return result
