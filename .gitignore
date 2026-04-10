@@ -57,3 +57,6 @@ face2.jpg
 *.synctex.gz
 *.toc
 *.log
+
+# Claude
+.claude/

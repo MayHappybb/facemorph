@@ -6,6 +6,8 @@ import cv2
 from .landmarks.base import create_detector
 from .pipeline.morph import morph_faces
 from .pipeline.sequence import generate_morph_sequence, save_video
+from .pipeline.group_morph import morph_group_photos
+from .recognition.identity import IdentityMatcher
 
 
 def main():
@@ -45,12 +47,25 @@ def main():
         "--output", "-o", default="output.png",
         help="Output file path"
     )
+    parser.add_argument(
+        "--group-photos", action="store_true",
+        help="Treat images as group photos with multiple faces"
+    )
+    parser.add_argument(
+        "--identity-threshold", type=float, default=0.6,
+        help="Threshold for face identity matching (0.0-1.0, lower=more strict)"
+    )
+    parser.add_argument(
+        "--show-identities", action="store_true",
+        help="Print detected identities and their weights"
+    )
 
     args = parser.parse_args()
 
     # Validate number of images
-    if len(args.images) < 2:
-        print("Error: Need at least 2 images", file=sys.stderr)
+    # Group photo mode allows single image (multiple faces in one photo)
+    if len(args.images) < 2 and not args.group_photos:
+        print("Error: Need at least 2 images (or use --group-photos for single group photo)", file=sys.stderr)
         sys.exit(1)
 
     # Validate sequence mode
@@ -107,23 +122,72 @@ def main():
         print(f"Error creating detector: {e}", file=sys.stderr)
         sys.exit(1)
 
-    # Detect landmarks
-    print("Detecting landmarks...")
-    landmarks = []
-    try:
-        for i, img in enumerate(images):
-            lm = detector.detect(img)
-            landmarks.append(lm)
-            print(f"  [{i}] {len(lm)} landmarks")
-    except ValueError as e:
-        print(f"Error: {e}", file=sys.stderr)
-        sys.exit(1)
-    except Exception as e:
-        print(f"Detection failed: {e}", file=sys.stderr)
-        sys.exit(1)
+    # Execute based on mode
+    if args.group_photos:
+        # Group photo mode with identity matching
+        print("\n=== Group Photo Mode ===")
+        print(f"Identity threshold: {args.identity_threshold}")
 
-    # Execute
-    if args.sequence:
+        try:
+            identity_matcher = IdentityMatcher(threshold=args.identity_threshold)
+            result, report = morph_group_photos(
+                images, detector, identity_matcher,
+                warper=args.warper,
+                show_report=args.show_identities
+            )
+
+            # Show identity report if requested
+            if args.show_identities and report:
+                print("\n" + report)
+
+            # Save result
+            success = cv2.imwrite(args.output, result)
+            if not success:
+                print(f"Error: Failed to save output to {args.output}", file=sys.stderr)
+                sys.exit(1)
+            print(f"\nSaved result to {args.output} ({result.shape[1]}x{result.shape[0]})")
+
+        except ImportError as e:
+            print(f"Error: {e}", file=sys.stderr)
+            print("To use group photo mode, install face_recognition:", file=sys.stderr)
+            print("  pip install face-recognition", file=sys.stderr)
+            sys.exit(1)
+        except ValueError as e:
+            print(f"Error: {e}", file=sys.stderr)
+            sys.exit(1)
+        except Exception as e:
+            print(f"Error processing group photos: {e}", file=sys.stderr)
+            sys.exit(1)
+        finally:
+            # Explicitly cleanup detector to avoid MediaPipe shutdown errors
+            if detector is not None and hasattr(detector, 'landmarker'):
+                try:
+                    if detector.landmarker is not None:
+                        detector.landmarker.close()
+                        detector.landmarker = None
+                except:
+                    pass
+            # Force garbage collection to clean up before exit
+            import gc
+            gc.collect()
+
+    elif args.sequence:
+        # Standard mode with sequence generation
+        # Detect landmarks (single face per image)
+        print("Detecting landmarks...")
+        landmarks = []
+        try:
+            for i, img in enumerate(images):
+                lm = detector.detect(img)
+                landmarks.append(lm)
+                print(f"  [{i}] {len(lm)} landmarks")
+        except ValueError as e:
+            print(f"Error: {e}", file=sys.stderr)
+            sys.exit(1)
+        except Exception as e:
+            print(f"Detection failed: {e}", file=sys.stderr)
+            sys.exit(1)
+
         print(f"\nGenerating morph sequence ({args.num_frames} frames)...")
         import os
         output_dir = os.path.splitext(args.output)[0] + "_frames"
@@ -137,7 +201,24 @@ def main():
         # Save video
         video_path = os.path.splitext(args.output)[0] + ".mp4"
         save_video(output_dir, video_path, fps=args.fps)
+
     else:
+        # Standard mode: single face per image
+        # Detect landmarks
+        print("Detecting landmarks...")
+        landmarks = []
+        try:
+            for i, img in enumerate(images):
+                lm = detector.detect(img)
+                landmarks.append(lm)
+                print(f"  [{i}] {len(lm)} landmarks")
+        except ValueError as e:
+            print(f"Error: {e}", file=sys.stderr)
+            sys.exit(1)
+        except Exception as e:
+            print(f"Detection failed: {e}", file=sys.stderr)
+            sys.exit(1)
+
         print(f"\nMorphing {len(images)} faces...")
         print(f"Using {args.warper} warper...")
         result = morph_faces(

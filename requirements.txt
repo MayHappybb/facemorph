@@ -3,6 +3,9 @@ opencv-python>=4.5.0
 scipy>=1.7.0
 mediapipe>=0.8.0
 
+# Required for group photo mode (face recognition)
+face-recognition>=1.3.0
+
 # Optional: dlib backend (requires CMake and compiled binary)
 # dlib>=19.22
 

@@ -15,6 +15,7 @@ A feature-based face morphing implementation with dual warping engines and norma
   - `inverse`: Pure Python educational implementation showing exact algorithm
 - **Normalized Coordinates**: Handles different image sizes without stretching
 - **Morph Sequences**: Generate smooth frame-by-frame animations
+- **Group Photo Support**: Average faces from group photos with automatic identity deduplication
 - **Comprehensive Tutorial**: Full LaTeX documentation with mathematical derivations
 
 ## Quick Start
@@ -80,6 +81,32 @@ python morph.py face_a.jpg face_b.jpg --warper inverse
 # Full morph animation
 python morph.py face_a.jpg face_b.jpg --sequence --num-frames 60
 ```
+
+## Group Photo Mode
+
+Average faces from group photos with automatic identity deduplication. When the same person appears in multiple photos, their total weight is split across appearances.
+
+```bash
+# Single group photo (equal weights for all faces)
+python morph.py group_photo.jpg --group-photos -o average.png
+
+# Multiple group photos with identity matching
+python morph.py party1.jpg party2.jpg --group-photos -o party_average.png
+
+# Show identity report with weights
+python morph.py group1.jpg group2.jpg --group-photos --show-identities
+
+# Adjust identity matching threshold (lower = more strict)
+python morph.py party*.jpg --group-photos --identity-threshold 0.5
+```
+
+**Example weight calculation:**
+- Photo 1 has 10 people (A-J)
+- Photo 2 has 8 people (A, K-Q) - Person A appears in both
+- Result: 5 unique people, Person A's two appearances share 1/5 weight (1/10 each)
+- Others get 1/5 weight each
+
+**Requirements:** Group photo mode requires `face-recognition` package (included in requirements.txt).
 
 ## License
 
